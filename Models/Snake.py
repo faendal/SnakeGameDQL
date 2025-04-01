@@ -14,14 +14,14 @@ class Snake:
         :param grid_size: Size of the grid (height, width).
         """
 
-        self.grid_size = grid_size
+        self.grid_size: tuple[int, int] = grid_size
         self.body: list[np.ndarray] = []
-        self.directions: list[str] = ["up", "down", "left", "right"]
+        self.directions: list[str] = [0, 1, 2, 3]
         self.movements: dict[str, np.ndarray] = {
-            "up": np.array([0, 1]),
-            "down": np.array([0, -1]),
-            "left": np.array([-1, 0]),
-            "right": np.array([1, 0]),
+            0: np.array([0, 1]),
+            1: np.array([0, -1]),
+            2: np.array([-1, 0]),
+            3: np.array([1, 0]),
         }
         self.reset()
 
@@ -32,9 +32,9 @@ class Snake:
         and its initial direction is randomly chosen.
         """
 
-        self.direction = np.random.choice(self.directions, p=[0.25, 0.25, 0.25, 0.25])
+        self.direction = np.random.choice(self.directions)
         head = np.random.randint(low=1, high=self.grid_size[0] - 1, size=2)
-        tail = head - self.movements[self.direction]
+        tail = head - self.movements[self.direction_mapper[self.direction]]
         self.body = [head, tail]
 
     def grow(self):
@@ -45,19 +45,26 @@ class Snake:
 
         self.body.append(self.body[-1] - self.movements[self.direction])
 
-    def move(self, action: str):
+    def check_action(self, direction: int, action: int) -> int:
+
+        if direction == 0 or direction == 1:
+            if action == 0 or action == 1:
+                return direction
+            else:
+                return action
+        elif direction == 2 or direction == 3:
+            if action == 2 or action == 3:
+                return direction
+            else:
+                return action
+
+    def step(self, action: int):
         """
         Move the snake in the specified direction.
-        :param action: Direction to move the snake ["up", "down", "left", "right"].
+        :param action: Direction to move the snake [0(up), 1(down), 2(left), 3(right)].
         """
 
-        if action not in self.directions:
-            raise ValueError(
-                f"Invalid action: {action}. Valid actions are: {self.directions}."
-            )
-
-        movement = self.movements[action]
-        head = self.body[0] + movement
-
+        self.direction = self.check_action(self.direction, action)
+        head = self.body[0] + self.movements[self.direction]
         self.body.insert(0, head)
         self.body.pop()

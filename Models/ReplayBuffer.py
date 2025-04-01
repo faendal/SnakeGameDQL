@@ -9,8 +9,17 @@ class ReplayBuffer:
     Experience Replay Buffer for storing and sampling experiences.
     """
 
-    def __init__(self, action_size: int, buffer_size: int, batch_size: int):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    def __init__(self, action_size: int, buffer_size: int, batch_size: int, device):
+        
+        """
+        Initialize a ReplayBuffer object.
+        :param action_size: Size of the action space.
+        :param buffer_size: Maximum size of the buffer.
+        :param batch_size: Size of each sampled batch.
+        :param device: Device to store the buffer (CPU or GPU).
+        """
+        
+        self.device = device
         self.action_size: int = action_size
         self.memory: deque = deque(maxlen=buffer_size)
         self.batch_size: int = batch_size
@@ -20,10 +29,24 @@ class ReplayBuffer:
         )
 
     def add(self, state, action, reward, next_state, done):
+        
+        """
+        Add a new experience to the buffer.
+        :param state: Current state of the agent.
+        :param action: Action taken by the agent.
+        :param reward: Reward received after taking the action.
+        :param next_state: Next state of the agent after taking the action.
+        :param done: Boolean indicating if the episode has ended.
+        """
+        
         e = self.experiences(state, action, reward, next_state, done)
         self.memory.append(e)
 
     def sample(self):
+        """
+        Randomly sample a batch of experiences from the buffer.
+        :return: Tuple of (states, actions, rewards, next_states, dones).
+        """
         experiences = random.sample(self.memory, k=self.batch_size)
         states = [e.state for e in experiences if e is not None]
         actions = (
