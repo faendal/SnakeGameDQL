@@ -11,6 +11,7 @@ class Snake:
     def __init__(self, grid_size=(20, 20)):
         """
         Initialize the Snake class.
+        
         :param grid_size: Size of the grid (height, width).
         """
 
@@ -61,6 +62,7 @@ class Snake:
     def step(self, action: int):
         """
         Move the snake in the specified direction.
+        
         :param action: Direction to move the snake [0(up), 1(down), 2(left), 3(right)].
         """
 
