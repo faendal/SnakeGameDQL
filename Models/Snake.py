@@ -35,7 +35,7 @@ class Snake:
 
         self.direction = np.random.choice(self.directions)
         head = np.random.randint(low=1, high=self.grid_size[0] - 1, size=2)
-        tail = head - self.movements[self.direction_mapper[self.direction]]
+        tail = head - self.movements[self.direction]
         self.body = [head, tail]
 
     def grow(self):
