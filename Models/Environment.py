@@ -3,8 +3,9 @@ import numpy as np
 
 
 class Environment:
-    def __init__(self, grid_size=20):
+    def __init__(self, grid_size=20, max_steps_without_food=50):
         self.grid_size = grid_size
+        self.max_steps_without_food = max_steps_without_food
         self.reset()
 
     def reset(self):
@@ -14,8 +15,10 @@ class Environment:
         self.direction = random.choice([0, 1, 2, 3])  # Up, Right, Down, Left
         self.spawn_food()
         self.update_grid()
+        self.reward = 0
         self.score = 0
         self.done = False
+        self.steps_since_last_food = 0  # Track steps without eating
         return self.grid.copy()
 
     def spawn_food(self):
@@ -61,21 +64,32 @@ class Environment:
             0 <= new_head[0] < self.grid_size and 0 <= new_head[1] < self.grid_size
         ):
             self.done = True
-            reward = -10
-            reward -= 0.1
-            return self.grid.copy(), reward, self.done
+            self.reward = -30  # Big penalty for dying
+            return self.grid.copy(), self.reward, self.done
 
         self.snake.insert(0, new_head)
 
         if new_head == self.food_pos:
-            reward = 10
+            self.reward = 20  # Big reward for eating food
             self.score += 1
             self.spawn_food()
+            self.steps_since_last_food = 0  # Reset steps counter
         else:
             self.snake.pop()
-            reward = 2 if new_dist < old_dist else -2
-        
-        reward -= 0.1
+            self.steps_since_last_food += 1
+            # Bonus/punishment based on distance to food
+            if new_dist < old_dist:
+                self.reward += 0.2  # Bonus for approaching
+            else:
+                self.reward -= 0.2  # Penalty for moving away
+
+        # Extra reward for longer snake
+        self.reward += (len(self.snake) - 1) * 0.05
+
+        # Force death if too long without eating
+        if self.steps_since_last_food > self.max_steps_without_food:
+            self.done = True
+            self.reward = -10  # Penalty for being too slow
 
         self.update_grid()
-        return self.grid.copy(), reward, self.done
+        return self.grid.copy(), self.reward, self.done

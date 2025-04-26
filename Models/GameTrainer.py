@@ -17,7 +17,7 @@ class GameTrainer:
         n_episodes=10000,
         max_t=300,
         eps_start=1.0,
-        eps_end=0.01,
+        eps_end=0.05,
         eps_decay=0.995,
         update_every=4,
         buffer_size=100_000,
@@ -73,7 +73,7 @@ class GameTrainer:
             self.scores.append(total_reward)
             eps = max(self.eps_end, self.eps_decay * eps)
 
-            if i_episode % 10 == 0:
+            if i_episode % 50 == 0:
                 avg_score = np.mean(self.scores_window)
                 print(f"Episode {i_episode}\tAverage Score: {avg_score:.2f}")
 
