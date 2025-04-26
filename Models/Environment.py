@@ -3,9 +3,9 @@ import numpy as np
 
 
 class Environment:
-    def __init__(self, grid_size=20, max_steps_without_food=50):
+    def __init__(self, grid_size=20, base_steps_without_food=50):
         self.grid_size = grid_size
-        self.max_steps_without_food = max_steps_without_food
+        self.base_steps_without_food = base_steps_without_food
         self.reset()
 
     def reset(self):
@@ -42,6 +42,15 @@ class Environment:
         hx, hy = head
         return abs(fx - hx) + abs(fy - hy)
 
+    def get_wall_distance_reward(self, head):
+        hx, hy = head
+        min_dist = min(hx, hy, self.grid_size - 1 - hx, self.grid_size - 1 - hy)
+        normalized = min_dist / (self.grid_size / 2)  # 0 (near wall) to 1 (centered)
+        return (normalized - 0.5) * 0.2  # Between -0.1 and +0.1
+
+    def is_almost_colliding(self, new_head):
+        return new_head in self.snake[1:]  # Check if moving into body (not head)
+
     def step(self, action):
         if self.done:
             return self.grid.copy(), 0, True
@@ -59,7 +68,7 @@ class Environment:
         old_dist = self.get_distance_to_food(self.snake[0])
         new_dist = self.get_distance_to_food(new_head)
 
-        # Check collisions
+        # Check collisions (walls, body)
         if (new_head in self.snake) or not (
             0 <= new_head[0] < self.grid_size and 0 <= new_head[1] < self.grid_size
         ):
@@ -69,25 +78,37 @@ class Environment:
 
         self.snake.insert(0, new_head)
 
+        # Initialize reward
+        self.reward = -0.1  # Small penalty for moving
+
         if new_head == self.food_pos:
-            self.reward = 20  # Big reward for eating food
+            self.reward += 20  # Big reward for eating food
             self.score += 1
             self.spawn_food()
             self.steps_since_last_food = 0  # Reset steps counter
         else:
             self.snake.pop()
             self.steps_since_last_food += 1
-            # Bonus/punishment based on distance to food
+
+            # Distance to food bonus/penalty
             if new_dist < old_dist:
                 self.reward += 0.2  # Bonus for approaching
             else:
                 self.reward -= 0.2  # Penalty for moving away
 
+        # Wall proximity reward/penalty
+        self.reward += self.get_wall_distance_reward(new_head)
+
+        # Near-self penalty
+        if self.is_almost_colliding(new_head):
+            self.reward -= 0.2
+
         # Extra reward for longer snake
         self.reward += (len(self.snake) - 1) * 0.05
 
-        # Force death if too long without eating
-        if self.steps_since_last_food > self.max_steps_without_food:
+        # Dynamic patience: longer snake → allow more steps without food
+        allowed_steps = self.base_steps_without_food + len(self.snake) * 2
+        if self.steps_since_last_food > allowed_steps:
             self.done = True
             self.reward = -10  # Penalty for being too slow
 

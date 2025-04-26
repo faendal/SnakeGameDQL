@@ -47,7 +47,7 @@ class Agent:
 
     def act(self, state, eps=0.0):
         state_tensor = (
-            torch.from_numpy(state).float().unsqueeze(0).to(self.device)
+            torch.from_numpy(state / 3.0).float().unsqueeze(0).to(self.device)
         )  # (1, 1, 20, 20)
         self.qnetwork_local.eval()
         with torch.no_grad():
@@ -64,8 +64,8 @@ class Agent:
         states, actions, rewards, next_states, dones = experiences
 
         # Convert states and next_states to tensors
-        states = torch.from_numpy(np.array(states)).float().to(self.device)
-        next_states = torch.from_numpy(np.array(next_states)).float().to(self.device)
+        states = torch.from_numpy(np.array(states) / 3.0).float().to(self.device)
+        next_states = torch.from_numpy(np.array(next_states) / 3.0).float().to(self.device)
 
         # Get max predicted Q values (for next states) from target model
         with torch.no_grad():
