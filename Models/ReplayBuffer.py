@@ -15,15 +15,13 @@ class ReplayBuffer:
         )
 
     def add(self, state, action, reward, next_state, done):
-        # Normalize once here
-        state = state / 3.0
-        next_state = next_state / 3.0
+        # state shape: (3, H, W)
         e = self.experience(state, action, reward, next_state, done)
         self.memory.append(e)
 
     def sample(self):
         experiences = random.sample(self.memory, k=self.batch_size)
-        states = np.array([e.state for e in experiences])
+        states = np.stack([e.state for e in experiences], axis=0)
         actions = (
             torch.from_numpy(np.vstack([e.action for e in experiences]))
             .long()
@@ -34,13 +32,12 @@ class ReplayBuffer:
             .float()
             .to(self.device)
         )
-        next_states = np.array([e.next_state for e in experiences])
+        next_states = np.stack([e.next_state for e in experiences], axis=0)
         dones = (
             torch.from_numpy(np.vstack([e.done for e in experiences]).astype(np.uint8))
             .float()
             .to(self.device)
         )
-
         return (states, actions, rewards, next_states, dones)
 
     def __len__(self):
