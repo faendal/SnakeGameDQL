@@ -56,7 +56,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        default=f"{CHECKPOINT_DIR}/best_model.pth",
+        default=f"{CHECKPOINT_DIR}/final_model.pth",
         help="Ruta al checkpoint del modelo",
     )
     parser.add_argument(

@@ -74,6 +74,8 @@ class SnakeGame:
         """
         Ejecuta un paso de simulación dado un action one-hot [straight, right, left].
 
+        Ahora comprueba colisión *antes* de añadir la cabeza al buffer.
+
         Args:
             action: Array de numpy con forma (3,) y un único 1 en la acción.
 
@@ -84,31 +86,35 @@ class SnakeGame:
         """
         self.frame_iteration += 1
 
-        # Mueve la cabeza y actualiza la deque
+        # 1) Calcula la nueva cabeza
         self._move(action)
-        self.snake.appendleft(self.head)
+        new_head = self.head
 
-        reward = 0.0
-        rows, cols = self.grid_size
-
-        # Colisión o demasiados pasos sin comer
-        if (
-            self.is_collision()
-            or self.frame_iteration > self.max_steps_without_food * len(self.snake)
-        ):
+        # 2) Comprueba colisión contra pared o cuerpo
+        if self.is_collision(new_head):
             self.done = True
+            # Devuelve el estado *sin* haber agregado la cabeza fuera de límites
             return self.get_state(), -10.0, True
 
-        # Si come comida
-        if self.head == self.food_pos:
+        # 3) Ya es un movimiento válido: añade la nueva cabeza
+        self.snake.appendleft(new_head)
+
+        reward = 0.0
+        # 4) Comprueba si comió
+        if new_head == self.food_pos:
             self.score += 1
             reward = 10.0
             self._place_food()
             self.frame_iteration = 0
         else:
-            # Desplaza cola
+            # 5) Si no comió, quita la cola
             self.snake.pop()
+            # 6) Y comprueba límite de pasos sin alimento
+            if self.frame_iteration > self.max_steps_without_food * len(self.snake):
+                self.done = True
+                return self.get_state(), -10.0, True
 
+        # 7) Finalmente, devuelve el nuevo estado
         return self.get_state(), reward, False
 
     def is_collision(self, point: Tuple[int, int] = None) -> bool:

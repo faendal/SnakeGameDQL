@@ -74,7 +74,7 @@ class ReplayBuffer:
         batch = Transition(*zip(*transitions))
 
         states = torch.stack(batch.state).to(device)
-        actions = torch.stack(batch.action).to(device)
+        actions = torch.cat(batch.action, dim=0).to(device)
         rewards = torch.tensor(
             batch.reward, dtype=torch.float32, device=device
         ).unsqueeze(1)
