@@ -1,58 +1,38 @@
-"""
-Configuration module for hyperparameters and curriculum stage settings.
-"""
+import torch
+from typing import Tuple
 
-import os
-from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+# Device configuration
+#: Torch device to perform computations on (CUDA if available, else CPU).
+DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# Environment
+#: Size of the SnakeGame grid (rows, columns).
+GRID_SIZE: Tuple[int, int] = (20, 20)
 
-@dataclass
-class StageConfig:
-    """Configuration for a single curriculum training stage."""
+# Replay buffer
+#: Maximum number of transitions to store.
+MEMORY_SIZE: int = 10_000
 
-    stage: int
-    env_kwargs: Dict[str, Any]
-    agent_kwargs: Dict[str, Any]
-    num_episodes: int
-    checkpoint_path: Optional[str]
-    output_path: str
+# Training hyperparameters
+#: Mini-batch size for sampling from replay buffer.
+BATCH_SIZE: int = 64
+#: Discount factor for future rewards.
+GAMMA: float = 0.99
+#: Learning rate for the optimizer.
+LR: float = 1e-3
+#: Initial ε for ε-greedy policy.
+EPS_START: float = 1.0
+#: Final ε for ε-greedy policy.
+EPS_END: float = 0.01
+#: Decay rate for ε (higher means slower decay).
+EPS_DECAY: int = 500
+#: Number of episodes between target network updates.
+TARGET_UPDATE: int = 10
+#: Total number of training episodes.
+MAX_EPISODES: int = 500
+#: Maximum steps per episode to avoid infinite loops.
+MAX_STEPS_PER_EPISODE: int = 1_000
 
-
-@dataclass
-class DQNConfig:
-    """Global configuration for DQN agent and environment."""
-
-    # Environment settings
-    state_shape: Tuple[int, int] = (20, 20)
-    num_actions: int = 4
-    width: int = 20
-    height: int = 20
-    max_steps_stage1: int = 500
-    max_steps_stage2: int = 1000
-
-    # Agent hyperparameters
-    replay_buffer_size: int = 10000
-    batch_size: int = 64
-    gamma: float = 0.99
-    lr: float = 1e-3
-    target_update_freq: int = 1000
-    eps_start: float = 1.0
-    eps_end: float = 0.1
-    eps_decay: int = 10000
-
-    # Training schedule
-    episodes_stage1: int = 5000
-    episodes_stage2: int = 10000
-
-    # Checkpoint directory
-    checkpoint_dir: str = "checkpoints"
-
-    def __post_init__(self) -> None:
-        """Ensure checkpoint directory exists."""
-        try:
-            os.makedirs(self.checkpoint_dir, exist_ok=True)
-        except Exception as e:
-            raise RuntimeError(
-                f"Could not create checkpoint dir {self.checkpoint_dir}: {e}"
-            )
+# Checkpointing
+#: Directory where model checkpoints will be saved.
+CHECKPOINT_DIR: str = "checkpoints"

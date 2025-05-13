@@ -1,141 +1,163 @@
-"""
-DQN Agent implementation for training and acting in the Snake environment.
-"""
+import math
+import random
+import logging
+from typing import Tuple
 
 import torch
-import random
-import numpy as np
 import torch.nn as nn
 import torch.optim as optim
-from typing import Tuple, Optional
-from agent.network import QNetwork
+
 from agent.replay_buffer import ReplayBuffer
-
-
-def torch_device() -> torch.device:
-    """Get the torch device, preferring CUDA if available."""
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from model.q_network import QNetwork
 
 
 class DQNAgent:
-    """Deep Q-Learning Agent for Snake game."""
+    """
+    Deep Q-Network agent for training on SnakeGame.
+
+    Implements an ε-greedy policy, experience replay, and a target network.
+
+    Attributes:
+        device: Torch device (cpu or cuda).
+        policy_net: Online Q-network.
+        target_net: Target Q-network, updated periodically.
+        optimizer: Optimizer for the policy network.
+        memory: Replay buffer for experience tuples.
+        batch_size: Number of samples per training batch.
+        gamma: Discount factor.
+        eps_start: Initial ε for ε-greedy.
+        eps_end: Final ε.
+        eps_decay: Decay rate for ε.
+        steps_done: Counter of action selections (for ε decay).
+        target_update: Number of episodes between target network updates.
+        action_size: Number of discrete actions.
+        logger: Logger for debug/info.
+    """
 
     def __init__(
         self,
-        state_shape: Tuple[int, int],
-        num_actions: int,
-        replay_buffer_size: int = 10000,
+        state_shape: Tuple[int, ...],
+        action_size: int,
+        device: torch.device,
+        memory_size: int = 10_000,
         batch_size: int = 64,
         gamma: float = 0.99,
         lr: float = 1e-3,
-        target_update_freq: int = 1000,
         eps_start: float = 1.0,
-        eps_end: float = 0.1,
-        eps_decay: int = 10000,
-        device: Optional[torch.device] = None,
+        eps_end: float = 0.01,
+        eps_decay: int = 500,
+        target_update: int = 10,
     ) -> None:
-        """Initialize the DQNAgent."""
-        try:
-            self.device = device or torch_device()
-            self.num_actions = num_actions
-            self.batch_size = batch_size
-            self.gamma = gamma
-            self.target_update_freq = target_update_freq
+        """
+        Initializes the DQN agent.
 
-            self.eps_start = eps_start
-            self.eps_end = eps_end
-            self.eps_decay = eps_decay
-            self.steps_done = 0
+        Args:
+            state_shape: Shape of each state (e.g., (1, 20, 20)).
+            action_size: Number of valid discrete actions.
+            device: Torch device to run computations on.
+            memory_size: Capacity of the replay buffer.
+            batch_size: Mini-batch size for training.
+            gamma: Discount factor for future rewards.
+            lr: Learning rate for the optimizer.
+            eps_start: Starting value of ε in ε-greedy.
+            eps_end: Final value of ε.
+            eps_decay: Rate at which ε decays.
+            target_update: Episodes between target network sync.
+        """
+        self.device = device
+        self.action_size = action_size
+        self.batch_size = batch_size
+        self.gamma = gamma
+        self.eps_start = eps_start
+        self.eps_end = eps_end
+        self.eps_decay = eps_decay
+        self.steps_done = 0
+        self.target_update = target_update
 
-            self.policy_net = QNetwork(state_shape, num_actions).to(self.device)
-            self.target_net = QNetwork(state_shape, num_actions).to(self.device)
-            self.target_net.load_state_dict(self.policy_net.state_dict())
-            self.target_net.eval()
+        # Networks
+        self.policy_net = QNetwork(state_shape, action_size).to(device)
+        self.target_net = QNetwork(state_shape, action_size).to(device)
+        self.target_net.load_state_dict(self.policy_net.state_dict())
+        self.target_net.eval()
 
-            self.optimizer = optim.Adam(self.policy_net.parameters(), lr=lr)
-            self.loss_fn = nn.MSELoss()
+        # Optimizer
+        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=lr)
 
-            self.memory = ReplayBuffer(replay_buffer_size)
-        except Exception as e:
-            raise RuntimeError(f"Failed to initialize DQNAgent: {e}")
+        # Replay buffer
+        self.memory = ReplayBuffer(memory_size)
 
-    def select_action(self, state: np.ndarray) -> int:
-        """Select an action using ε-greedy policy."""
-        try:
-            eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * max(
-                0.0, (self.eps_decay - self.steps_done) / self.eps_decay
-            )
-            self.steps_done += 1
+        # Logger
+        logging.basicConfig(level=logging.INFO)
+        self.logger = logging.getLogger(__name__)
 
-            if random.random() < eps_threshold:
-                return random.randrange(self.num_actions)
+    def select_action(self, state: torch.Tensor) -> torch.Tensor:
+        """
+        Selects an action using an ε-greedy policy.
 
-            state_tensor = torch.tensor(
-                state, dtype=torch.float32, device=self.device
-            ).unsqueeze(0)
+        Args:
+            state: Current state tensor, shape matching state_shape.
+
+        Returns:
+            A tensor of shape (1, 1) with the chosen action index.
+        """
+        eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * math.exp(
+            -1.0 * self.steps_done / self.eps_decay
+        )
+        self.steps_done += 1
+
+        if random.random() > eps_threshold:
+            # Exploit: best action
             with torch.no_grad():
-                q_values = self.policy_net(state_tensor)
-            return int(q_values.argmax(dim=1).item())
-        except Exception as e:
-            raise RuntimeError(f"Error selecting action: {e}")
+                state = state.unsqueeze(0).to(self.device)  # add batch dim
+                q_values = self.policy_net(state)
+                action = q_values.max(1)[1].view(1, 1)
+        else:
+            # Explore: random action
+            action = torch.tensor(
+                [[random.randrange(self.action_size)]],
+                device=self.device,
+                dtype=torch.long,
+            )
+        return action
 
-    def push_transition(
-        self,
-        state: np.ndarray,
-        action: int,
-        reward: float,
-        next_state: np.ndarray,
-        done: bool,
-    ) -> None:
-        """Store a transition in replay buffer."""
-        try:
-            self.memory.push(state, action, reward, next_state, done)
-        except Exception as e:
-            raise RuntimeError(f"Error pushing transition: {e}")
-
-    def optimize(self) -> Optional[float]:
-        """Perform one optimization step on the policy network."""
+    def optimize_model(self) -> None:
+        """
+        Samples a batch from memory and performs a single optimization step.
+        """
         if len(self.memory) < self.batch_size:
-            return None
+            return
 
-        try:
-            states, actions, rewards, next_states, dones = self.memory.sample(
-                self.batch_size
-            )
+        states, actions, rewards, next_states, dones = self.memory.sample(
+            self.batch_size, self.device
+        )
 
-            q_values = (
-                self.policy_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
-            )
-            with torch.no_grad():
-                next_q = self.target_net(next_states).max(1)[0]
+        # Compute Q(s_t, a) using policy network
+        state_action_values = self.policy_net(states).gather(1, actions)
 
-            expected_q = rewards + (self.gamma * next_q * (~dones))
+        # Compute V(s_{t+1}) using target network
+        next_state_values = self.target_net(next_states).max(1)[0].detach().unsqueeze(1)
 
-            loss = self.loss_fn(q_values, expected_q)
-            self.optimizer.zero_grad()
-            loss.backward()
-            nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=1.0)
-            self.optimizer.step()
+        # Compute expected Q values
+        expected_state_action_values = rewards + (
+            self.gamma * next_state_values * (1 - dones.float())
+        )
 
-            if self.steps_done % self.target_update_freq == 0:
-                self.target_net.load_state_dict(self.policy_net.state_dict())
+        # Compute loss (MSE)
+        loss = nn.functional.mse_loss(state_action_values, expected_state_action_values)
 
-            return float(loss.item())
-        except Exception as e:
-            raise RuntimeError(f"Error during optimization: {e}")
+        # Optimize the model
+        self.optimizer.zero_grad()
+        loss.backward()
+        # Clip gradients to improve stability
+        for param in self.policy_net.parameters():
+            param.grad.data.clamp_(-1, 1)
+        self.optimizer.step()
 
-    def save(self, path: str) -> None:
-        """Save the policy network checkpoint."""
-        try:
-            torch.save(self.policy_net.state_dict(), path)
-        except Exception as e:
-            raise RuntimeError(f"Failed to save model to {path}: {e}")
+        self.logger.debug(f"Optimize_model loss: {loss.item():.4f}")
 
-    def load(self, path: str) -> None:
-        """Load a policy network checkpoint."""
-        try:
-            state_dict = torch.load(path, map_location=self.device)
-            self.policy_net.load_state_dict(state_dict)
-            self.target_net.load_state_dict(state_dict)
-        except Exception as e:
-            raise RuntimeError(f"Failed to load model from {path}: {e}")
+    def update_target_network(self) -> None:
+        """
+        Copies the policy network weights to the target network.
+        """
+        self.target_net.load_state_dict(self.policy_net.state_dict())
+        self.logger.info("Target network updated.")

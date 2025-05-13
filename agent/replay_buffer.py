@@ -1,90 +1,93 @@
-"""
-Replay buffer for storing and sampling transitions in DQN training.
-"""
-
-import torch
-import random
-import numpy as np
-from collections import deque
+from collections import deque, namedtuple
+from random import sample
 from typing import Deque, Tuple
 
-torch_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+import torch
+
+
+Transition = namedtuple(
+    "Transition", ("state", "action", "reward", "next_state", "done")
+)
 
 
 class ReplayBuffer:
-    """Fixed-size buffer to store experience tuples.
+    """
+    Fixed-size buffer to store experience tuples for DQN training.
+
+    This buffer holds the most recent `capacity` transitions and supports
+    sampling a random batch for learning.
 
     Attributes:
-        capacity: Maximum number of transitions to store.
-        buffer: Deque storing the transitions.
-        device: PyTorch device for tensors.
+        capacity (int): Maximum number of transitions to store.
+        buffer (Deque[Transition]): Deque holding the stored transitions.
     """
 
     def __init__(self, capacity: int) -> None:
-        """Initialize a ReplayBuffer.
+        """
+        Initializes the replay buffer.
 
         Args:
-            capacity: Maximum number of transitions to store in the buffer.
-
-        Raises:
-            ValueError: If capacity is not a positive integer.
+            capacity: Maximum number of transitions to store.
         """
-        if capacity <= 0:
-            raise ValueError(f"ReplayBuffer capacity must be positive, got {capacity}")
         self.capacity: int = capacity
-        self.buffer: Deque[Tuple[np.ndarray, int, float, np.ndarray, bool]] = deque(
-            maxlen=capacity
-        )
-        self.device: torch.device = torch_device
+        self.buffer: Deque[Transition] = deque(maxlen=capacity)
 
     def push(
         self,
-        state: np.ndarray,
-        action: int,
+        state: torch.Tensor,
+        action: torch.Tensor,
         reward: float,
-        next_state: np.ndarray,
+        next_state: torch.Tensor,
         done: bool,
     ) -> None:
-        """Save a transition."""
-        try:
-            self.buffer.append((state, action, reward, next_state, done))
-        except Exception as e:
-            raise RuntimeError(f"Failed to push to ReplayBuffer: {e}")
+        """
+        Saves a transition.
+
+        Args:
+            state: Current state tensor.
+            action: Action tensor taken at this state.
+            reward: Reward received after taking the action.
+            next_state: Next state tensor after the action.
+            done: True if the episode terminated after this transition.
+        """
+        self.buffer.append(Transition(state, action, reward, next_state, done))
 
     def sample(
-        self, batch_size: int
+        self, batch_size: int, device: torch.device
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Sample a batch of transitions and convert to torch tensors."""
-        if batch_size <= 0:
-            raise ValueError(f"batch_size must be positive, got {batch_size}")
-        if batch_size > len(self.buffer):
-            raise ValueError(
-                f"Cannot sample {batch_size} from buffer with {len(self.buffer)} elements"
-            )
-        try:
-            transitions = random.sample(self.buffer, batch_size)
-            states, actions, rewards, next_states, dones = zip(*transitions)
+        """
+        Samples a batch of transitions, converting them into stacked tensors.
 
-            states_tensor = torch.from_numpy(np.stack(states)).float().to(self.device)
-            actions_tensor = torch.tensor(actions, dtype=torch.long, device=self.device)
-            rewards_tensor = torch.tensor(
-                rewards, dtype=torch.float32, device=self.device
-            )
-            next_states_tensor = (
-                torch.from_numpy(np.stack(next_states)).float().to(self.device)
-            )
-            dones_tensor = torch.tensor(dones, dtype=torch.bool, device=self.device)
+        Args:
+            batch_size: Number of transitions to sample.
+            device: Device on which to return the tensors (e.g., cuda or cpu).
 
-            return (
-                states_tensor,
-                actions_tensor,
-                rewards_tensor,
-                next_states_tensor,
-                dones_tensor,
-            )
-        except Exception as e:
-            raise RuntimeError(f"Failed to sample from ReplayBuffer: {e}")
+        Returns:
+            A tuple of five tensors:
+                states      (batch_size, *state_shape)
+                actions     (batch_size, 1)
+                rewards     (batch_size, 1)
+                next_states (batch_size, *state_shape)
+                dones       (batch_size, 1)
+        """
+        transitions = sample(self.buffer, batch_size)
+        batch = Transition(*zip(*transitions))
+
+        states = torch.stack(batch.state).to(device)
+        actions = torch.stack(batch.action).to(device)
+        rewards = torch.tensor(
+            batch.reward, dtype=torch.float32, device=device
+        ).unsqueeze(1)
+        next_states = torch.stack(batch.next_state).to(device)
+        dones = torch.tensor(batch.done, dtype=torch.uint8, device=device).unsqueeze(1)
+
+        return states, actions, rewards, next_states, dones
 
     def __len__(self) -> int:
-        """Return the current size of internal memory."""
+        """
+        Returns the current size of internal memory.
+
+        Returns:
+            Number of transitions currently stored.
+        """
         return len(self.buffer)
